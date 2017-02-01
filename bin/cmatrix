@@ -1,0 +1,301 @@
+#!/usr/bin/env python
+import argparse
+import csv
+import distutils.dir_util as dutil
+import logging
+import os
+import pprint
+import re
+import shutil
+import subprocess
+from os.path import dirname, realpath, join, exists
+
+
+#---- Script Constants ---------------------------------------------------------
+CMATRIX_ROOT = dirname(dirname(realpath(__file__)))
+TEMPLATES    = "templates"    # Location of case templates
+WORKING      = "working"      # Location of in-progress calculations
+ARCHIVE      = "archive"      # Location of completed/verified calculations
+FILE_LIST    = "replace.txt"  # List of input file requiring param replacement
+RUN_SCRIPT   = "run.sh"       # Script executed for each case
+
+
+#---- Helper Functions ---------------------------------------------------------
+def replace_tokens(filename, tokens):
+    ''' Replace keys(tokens) with values(tokens) in filename '''
+
+    with open(filename) as fin:
+        contents = fin.read()
+
+    # Black Magic: Replaces all placeholders in a file in one pass
+    # Based on http://stackoverflow.com/questions/6116978
+    pattern  = re.compile('|'.join(re.escape(k) for k in tokens.keys()))
+    contents = pattern.sub(lambda t: tokens[t.group(0)], contents)
+
+    with open(filename, 'w') as fout:
+        fout.write(contents)
+
+def update_case_files(case_path, case_dict):
+    ''' Performs token replacement on files from template '''
+    home = os.getcwd()
+    case_tokens = { '<<' + k + '>>':v for k,v in case_dict.items() }
+    try:
+        os.chdir(case_path)
+        with open(FILE_LIST) as flist:
+            for filename in flist:
+                filename = filename.strip()
+                if filename.startswith('#'):
+                    continue
+                replace_tokens(filename, case_tokens)
+    except:
+        logging.exception(
+            ('Error performing token replacement:\n'
+            '  Case Directory: "%s"\n'
+            '  Case Variables:\n  %s'),
+            case_path,
+            pprint.pformat(case_dict, width=1, indent=4),
+        )
+    finally:
+        os.chdir(home)
+
+def try_float(val):
+    ''' Attempts conversion to float; if fails, returns original string '''
+    try:
+        return float(val)
+    except:
+        return val
+
+def meets_conditional(conditional, case_dict):
+    ''' Evaluates Python conditional expression with data from case_dict.
+        Note: This uses eval and is not safe becasue executing arbitrary
+        user-supplied expressions can do bad things. However, since this
+        in an internal tool, we assume the user isn't a bad actor.
+    '''
+    try:
+        case_dict = { k:try_float(v) for k,v in case_dict.items() }
+        result = eval(conditional, {}, case_dict)
+        assert(result is True or result is False)
+        return result
+    except:
+       logging.exception(
+            ('Error while evaluating user supplied conditional:\n'
+            '  Conditional: "%s"\n'
+            '  Case Variables:\n  %s'),
+            conditional,
+            pprint.pformat(case_dict, width=1, indent=4),
+        )
+
+def case_generator(args):
+    ''' Yeilds dicts with row data from the (filtered) case matrix '''
+    with open(args.file) as csvfile:
+        keys = [s.strip() for s  in csvfile.readline().split(',')]
+        for row in csv.DictReader(csvfile, fieldnames = keys):
+            row = { k:v.strip() for k,v in row.items() }
+            if meets_conditional(args.conditional, row):
+                yield row
+
+#---- Subcommands --------------------------------------------------------------
+def init(args):
+    ''' Creates the directory structure required for cmatrix '''
+    if exists(args.folder):
+        logging.warning(
+           'Did not create case matrix at "%s"! Folder already exists!',
+           args.folder,
+        )
+    else:
+        try:
+            shutil.copytree(join(CMATRIX_ROOT, 'template'), args.folder)
+            logging.info('Created empty case matrix at "%s"', args.folder)
+        except:
+            logging.exception(
+                'Failed to create case matrix at "%s"!',
+                args.folder,
+            )
+
+def create(args):
+    ''' Constructs empty case directories from templates + case matrix '''
+    for case in case_generator(args):
+        src = join(TEMPLATES, case['template'])
+        dst = join(WORKING, case['name'])
+        if exists(dst):
+            confirm = raw_input('Remove %s? [y/n]  ' % dst)
+            if 'y' in confirm.lower():
+                shutil.rmtree(dst)
+            else:
+                logging.warning('%s was skipped (case already exists)', case['name'])
+                continue
+        shutil.copytree(src, dst, symlinks = True)
+        update_case_files(dst, case)
+        logging.info('%s was created.', case['name'])
+
+def submit(args):
+    ''' Submits cases for execution using the qsub command '''
+    home = os.getcwd()
+
+    # Check that we have a queue system available
+    try:
+        subprocess.check_output(['qsub', '--version'])
+    except:
+        logging.error('qsub command not available on this machine! Try "cmatrix run".')
+        return
+
+    # Submit all cases
+    for case in case_generator(args):
+        cname = case['name']
+        if exists(join(ARCHIVE, cname)):
+            logging.info('%s was skipped (archived)', cname)
+            continue
+
+        if not exists(join(WORKING, cname)):
+            logging.warning('%s was skipped (working directory is missing)', cname)
+            continue
+
+        try:
+            os.chdir(join(WORKING, cname))
+            out = subprocess.check_output(['qsub'] + args.qargs + ['run.sh'])
+            logging.info('%s started as %s', cname, out.strip())
+        except:
+            logging.exception('%s failed while issuing qsub command!', cname)
+        finally:
+            os.chdir(home)
+
+def update(args):
+    ''' Re-generates case files in-place without deleting existing outputs '''
+    home = os.getcwd()
+    for case in case_generator(args):
+        cname = case['name']
+        src = join(TEMPLATES, case['template'])
+        dst = join(WORKING, cname)
+
+        if not exists(dst):
+            logging.info('%s was skipped (no case folder)', cname)
+            continue
+
+        # Copy template files, respecting symlinks and adding missing directories.
+        # This is actually tricky to do because shutil.copytree requires a fresh
+        # destination. distutils.dir_util.copy_tree will clobber, but will not
+        # overwrite existing symlinks when preserve_symlinks=True... b/c reasons.
+        try:
+            os.chdir(src)
+            for root, dirs, files in os.walk('.'):
+                for dir in dirs:
+                    dst_dir = join(home, dst, root, dir)
+                    if not exists(dst_dir):
+                        os.mkdir(dst_dir)
+                for file in files:
+                    src_file = join(home, src, root, file)
+                    dst_file = join(home, dst, root, file)
+                    if exists(dst_file):
+                        os.remove(dst_file)
+                    if os.path.islink(src_file):
+                        linkto = os.readlink(src_file)
+                        os.symlink(linkto, dst_file)
+                    else:
+                        shutil.copy(src_file, dst_file)
+        finally:
+            os.chdir(home)
+
+        # Do token replacement
+        update_case_files(dst, case)
+        logging.info('%s was updated.', cname)
+
+
+#---- Argument Parser ----------------------------------------------------------
+def build_parser():
+    ''' Constructs command line argument parser '''
+
+    # Top level parser
+    parser = argparse.ArgumentParser(
+        description = 'Utility for managing a case matrix',
+    )
+    parser.add_argument(
+        '-v', '--verbose',
+        help = 'Show detailed output log',
+        action = 'store_const',
+        dest = 'loglevel',
+        const = logging.INFO,
+        default = logging.WARNING,
+    )
+    parser.add_argument(
+        '-d', '--debug',
+        help = 'Show all debugging output',
+        action = 'store_const',
+        dest = 'loglevel',
+        const = logging.DEBUG,
+    )
+    subparsers = parser.add_subparsers(
+        metavar = 'cmd',
+        help = 'Subcommand to execute',
+    )
+
+    # Common subparser for accepting a case matrix
+    case_matrix_parser = argparse.ArgumentParser(add_help = False)
+    case_matrix_parser.add_argument(
+        '-f', '--file',
+        help = 'File with case matrix parameters.',
+        default = 'case_matrix.csv',
+    )
+    case_matrix_parser.add_argument(
+        'conditional',
+        help = 'Python conditional expression used to filter cases',
+        default = 'True',
+        nargs = '?',
+    )
+
+    # Init command
+    init_parser = subparsers.add_parser(
+        'init',
+         help = init.__doc__,
+         description = init.__doc__,
+    )
+    init_parser.add_argument(
+        'folder',
+        help = 'Folder where case matrix template will be created',
+    )
+    init_parser.set_defaults(func = init)
+
+    # Create command
+    create_parser = subparsers.add_parser(
+        'create',
+        help = create.__doc__,
+        description = create.__doc__,
+        parents = [case_matrix_parser],
+    )
+    create_parser.set_defaults(func = create)
+
+    # Submit command
+    submit_parser = subparsers.add_parser(
+        'submit',
+        help = submit.__doc__,
+        description = submit.__doc__,
+        parents = [case_matrix_parser],
+    )
+    submit_parser.add_argument(
+        'qargs',
+        help = 'Additional arguments passed to qsub command',
+        default = [],
+        nargs = '*',
+    )
+    submit_parser.set_defaults(func = submit)
+
+    # Updated command
+    update_parser = subparsers.add_parser(
+        'update',
+        help = update.__doc__,
+        description = update.__doc__,
+        parents = [case_matrix_parser],
+    )
+    update_parser.set_defaults(func = update)
+
+    return parser
+
+
+#---- Main Program -------------------------------------------------------------
+if __name__ == '__main__':
+    parser = build_parser()
+    args = parser.parse_args()
+    logging.basicConfig(
+        level=args.loglevel,
+        format='%(levelname)s: %(message)s',
+    )
+    args.func(args)

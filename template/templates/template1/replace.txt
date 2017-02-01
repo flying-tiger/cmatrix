@@ -1,0 +1,3 @@
+# List of files to perform token replacement on when instantiating a case.
+# Each filename should appear on a separate line. 
+example.inp

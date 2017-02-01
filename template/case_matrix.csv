@@ -1,0 +1,5 @@
+name,    template,    parameter1,   parameter2,
+case1,   template1,   1.00000,      1.00000,
+case2,   template1,   2.00000,      1.00000,
+case3,   template1,   1.00000,      2.00000,
+case4,   template1,   2.00000,      2.00000,

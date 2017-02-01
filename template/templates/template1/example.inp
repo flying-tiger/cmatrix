@@ -1,0 +1,17 @@
+When a case is created from a template, any file listed in "replace.txt"
+will be scanned for replacement tokens. Replacement tokens are any valid 
+python variable name enclosed in double angle brackets, e.g. 
+    <<name>>
+    <<template>>
+    <<parameter1>>
+    <<parameter2>> 
+When found, the tokens will be replaced with the appropriate value from 
+from the case matrix parameter file, "case_matrix.csv". Replacement is a
+simple textual substitution with the text from the case matrix parameter
+file (with leading/trailing whitespace removed).
+
+Typically, token replacement will be performed on the inpute file for an
+analysis tool (e.g. dplr.inp) and possibly the script used to run the case
+(run.sh). However, you can do token replacement in anything that is a text
+file.
+
