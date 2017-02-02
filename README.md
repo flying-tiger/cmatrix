@@ -5,7 +5,7 @@
 cmatrix is a command line utility for constructing, executing and managing a
 large case matrix of numerical calculations (6DOF sims, CFD runs, etc.). The 
 basic idea is that the user defines **templates** which are then specialized 
-using parameters specified in a case_matrix parameter file, which is typically
+using parameters specified in a case matrix parameter file, which is typically
 just a CSV file named "case_matrix.csv".
 
 Templates are a collection of files in a directory. They could be anything, but
@@ -28,32 +28,42 @@ If you use bash, use the provided setup file (and add to .bashrc):
 
 ## Useage
 
-    cmatrix init folder         # Initializes directory structure in "folder"
-    cd folder                   # Must be in project root for all other cmds
-    cmatrix create              # Create new working folder for all cases in matrix
-    cmatrix create conditional  # Instantiates only cases that meet conditional
-    cmatrix submit conditional  # Submits run.sh for execution via qsub
-    cmatrix update conditional  # In-place update of files; ignores any outputs
+    cmatrix init folder        # Initializes directory structure in "folder"
+    cd folder                  # Must be in project root for all other cmds
+    cmatrix create             # Create new working folder for all cases in matrix
+    cmatrix create <selector>  # Instantiates only cases that match selector
+    cmatrix submit <selector>  # Submits run.sh for execution via qsub
+    cmatrix update <selector>  # In-place update of case files; leaves output as-is
 
-## Conditionals
+## Selectors
 In a large case matrix, we often only want to work with a subset of the case 
-matrix at any given time, e.g. only the Mach = 10.0 cases. Conditionals allow
-quick and easy filtering of the case matrix at the commandline. Conditionals 
-are any valid Python expression that evaluates to true or false. Conditionals 
-may reference case matrix parameters by column name (for this reason, column
-names in case_matrix.csv should always be valid Python variable names). Use 
-of Python built-in functions and operators is supported.
+matrix at any given time, e.g. only the Mach = 10.0 cases. Selectors allow
+quick and easy filtering of the case matrix at the commandline. Selectors may be:
+ 1. A Unix-style wildcard pattern that is matched against case names
+ 2. A Python expression involving case parameters that evaluates to True/False
 
-For example, consider a case_matrix.csv file with columns that include 
-"case_name", "mach", and "alpha". The following are examples of valid 
-conditionals:
+
+Case name matching using wild card patterns is case-sensitive and based on the
+Pythons [fnmatch](https://docs.python.org/2/library/fnmatch.html) module. Examples
+of valid patterns are:
+
+    "sim*"      # "*" matches any substring
+    "sim?"      # "?" matches any single character
+    "sim[1-9]"  # "[...]" accepts any character in the set
+    "sim[!abc]" # "[!...]" accepts any character not in the set
+
+
+Conditional expressions maybe any valid Python code that evaluates to True or 
+False. The expression may reference case matrix parameters by column name (for 
+this reason, column names in case_matrix.csv should always be valid Python
+variable names). Use of Python built-in functions and operators is supported.
+Consider a "case_matrix.csv" file with columns that include "name", "mach",
+and "alpha". The following are examples of valid conditionals:
 
     "mach  == 14.0"
     "alpha <= 10.0"
     "mach  == 14.0 and alpha <= 10.0"
-    "case_name.startswith('foo')"
-    "'bar' in case_name"
-    "'baz' not in case_name"
-    etc.
-    
+    "name.startswith('foo')"
+    "'bar' in name"
+    "'baz' not in name"    
 

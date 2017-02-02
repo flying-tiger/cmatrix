@@ -2,6 +2,7 @@
 import argparse
 import csv
 import distutils.dir_util as dutil
+import fnmatch
 import logging
 import os
 import pprint
@@ -65,23 +66,32 @@ def try_float(val):
     except:
         return val
 
-def meets_conditional(conditional, case_dict):
-    ''' Evaluates Python conditional expression with data from case_dict.
-        Note: This uses eval and is not safe becasue executing arbitrary
-        user-supplied expressions can do bad things. However, since this
-        in an internal tool, we assume the user isn't a bad actor.
-    '''
+def matches_selector(selector, case_dict):
+    ''' Examines the case dictionary to determine if case matches the 
+        selector. The selector may be either a glob expression that is
+        used to filter cases based on their case names or an arbitrary
+        python conditional expression involving the entires in the case
+        dictionary '''
+    cname = case_dict['name']
+    if fnmatch.fnmatchcase(cname, selector):
+        logging.debug('%s: Selector matched case name.', cname)
+        return True
     try:
         case_dict = { k:try_float(v) for k,v in case_dict.items() }
-        result = eval(conditional, {}, case_dict)
+        result = eval(selector, {}, case_dict)
         assert(result is True or result is False)
+        logging.debug('%s: Selector evaluated to %s', cname, result)
         return result
-    except:
-       logging.exception(
-            ('Error while evaluating user supplied conditional:\n'
+    except Exception as e:
+        logging.debug(
+            ('%s: Exception while evaluating user supplied conditional:\n'
             '  Conditional: "%s"\n'
+            '  Exception Type: %s\n'
+            '  Exception Message: %s\n'
             '  Case Variables:\n  %s'),
-            conditional,
+            cname,
+            selector,
+            e.__class__.__name__, e,
             pprint.pformat(case_dict, width=1, indent=4),
         )
 
@@ -91,7 +101,7 @@ def case_generator(args):
         keys = [s.strip() for s  in csvfile.readline().split(',')]
         for row in csv.DictReader(csvfile, fieldnames = keys):
             row = { k:v.strip() for k,v in row.items() }
-            if meets_conditional(args.conditional, row):
+            if matches_selector(args.selector, row):
                 yield row
 
 #---- Subcommands --------------------------------------------------------------
@@ -236,8 +246,8 @@ def build_parser():
         default = 'case_matrix.csv',
     )
     case_matrix_parser.add_argument(
-        'conditional',
-        help = 'Python conditional expression used to filter cases',
+        'selector',
+        help = 'Glob or Python expression used to filter cases',
         default = 'True',
         nargs = '?',
     )
