@@ -3,6 +3,7 @@ import argparse
 import csv
 import distutils.dir_util as dutil
 import fnmatch
+import glob
 import logging
 import os
 import pprint
@@ -17,7 +18,7 @@ CMATRIX_ROOT = dirname(dirname(realpath(__file__)))
 TEMPLATES    = "templates"    # Location of case templates
 WORKING      = "working"      # Location of in-progress calculations
 ARCHIVE      = "archive"      # Location of completed/verified calculations
-FILE_LIST    = "replace.txt"  # List of input file requiring param replacement
+REPLACE_LIST = "replace.txt"  # List of input file requiring param replacement
 RUN_SCRIPT   = "run.sh"       # Script executed for each case
 
 
@@ -42,12 +43,12 @@ def update_case_files(case_path, case_dict):
     case_tokens = { '<<' + k + '>>':v for k,v in case_dict.items() }
     try:
         os.chdir(case_path)
-        with open(FILE_LIST) as flist:
-            for filename in flist:
-                filename = filename.strip()
-                if filename.startswith('#'):
-                    continue
-                replace_tokens(filename, case_tokens)
+        with open(REPLACE_LIST) as rlist:
+            for pattern in rlist:
+                pattern = pattern.strip()
+                if pattern and not pattern.startswith('#'):
+                    for filename in glob.glob(pattern):
+                        replace_tokens(filename, case_tokens)
     except:
         logging.exception(
             ('Error performing token replacement:\n'
