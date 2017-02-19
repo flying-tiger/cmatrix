@@ -15,11 +15,35 @@ from os.path import dirname, realpath, join, exists
 
 #---- Script Constants ---------------------------------------------------------
 CMATRIX_ROOT = dirname(dirname(realpath(__file__)))
-TEMPLATES    = "templates"    # Location of case templates
-WORKING      = "working"      # Location of in-progress calculations
-ARCHIVE      = "archive"      # Location of completed/verified calculations
-REPLACE_LIST = "replace.txt"  # List of input file requiring param replacement
-RUN_SCRIPT   = "run.sh"       # Script executed for each case
+
+#---- Helper Classes -----------------------------------------------------------
+class ProjectStructure:
+    def __init__(self, case_file):
+
+        # Get abspath to the project root directory (directory containing the
+        # case matrix definitition file). This may be in a directory above the
+        # current working directory, so we ascend upward until the file is found.
+        # Error is thrown if the file cannot be located.
+        cwd = os.getcwd()
+        while cwd != dirname(cwd): # Fails at filesystem root
+            if exists(join(cwd, case_file)):
+                self.project_root = cwd
+                self.case_file = join(cwd, case_file)
+                break
+            cwd = dirname(cwd)
+        else:
+            logging.exception(
+                'Casefile "%s" not in current directory or any parent directory',
+                case_file
+            )
+            raise RuntimeError()
+
+        # Set project paths and files
+        self.templates    = join(self.project_root, "templates") # Location of case templates
+        self.working      = join(self.project_root, "working")   # Location of in-progress calculations
+        self.archive      = join(self.project_root, "archive")   # Location of completed calculations
+        self.replace_list = "replace.txt"                        # List files requiring param replacement
+        self.run_script   = "run.sh"                             # Script executed/submitted for each case
 
 
 #---- Helper Functions ---------------------------------------------------------
@@ -37,18 +61,18 @@ def replace_tokens(filename, tokens):
     with open(filename, 'w') as fout:
         fout.write(contents)
 
-def update_case_files(case_path, case_dict):
+def update_case_files(case_path, replace_file, case_dict):
     ''' Performs token replacement on files from template '''
     home = os.getcwd()
     case_tokens = { '<<' + k + '>>':v for k,v in case_dict.items() }
     try:
         os.chdir(case_path)
-        with open(REPLACE_LIST) as rlist:
+        with open(replace_file) as rlist:
             for pattern in rlist:
                 pattern = pattern.strip()
                 if pattern and not pattern.startswith('#'):
                     for filename in glob.glob(pattern):
-                        replace_tokens(filename, case_tokens)
+                        replace_tokens(join(case_path, filename), case_tokens)
     except:
         logging.exception(
             ('Error performing token replacement:\n'
@@ -96,14 +120,15 @@ def matches_selector(selector, case_dict):
             pprint.pformat(case_dict, width=1, indent=4),
         )
 
-def case_generator(args):
+def case_generator(filename):
     ''' Yeilds dicts with row data from the (filtered) case matrix '''
-    with open(args.file) as csvfile:
+    with open(filename) as csvfile:
         keys = [s.strip() for s  in csvfile.readline().split(',')]
         for row in csv.DictReader(csvfile, fieldnames = keys):
             row = { k:v.strip() for k,v in row.items() }
             if matches_selector(args.selector, row):
                 yield row
+
 
 #---- Subcommands --------------------------------------------------------------
 def init(args):
@@ -123,11 +148,11 @@ def init(args):
                 args.folder,
             )
 
-def create(args):
+def create(proj, args):
     ''' Constructs empty case directories from templates + case matrix '''
-    for case in case_generator(args):
-        src = join(TEMPLATES, case['template'])
-        dst = join(WORKING, case['name'])
+    for case in case_generator(proj.case_file):
+        src = join(proj.templates, case['template'])
+        dst = join(proj.working, case['name'])
         if exists(dst):
             confirm = raw_input('Remove %s? [y/n]  ' % dst)
             if 'y' in confirm.lower():
@@ -136,10 +161,10 @@ def create(args):
                 logging.warning('%s was skipped (case already exists)', case['name'])
                 continue
         shutil.copytree(src, dst, symlinks = True)
-        update_case_files(dst, case)
+        update_case_files(dst, proj.replace_list, case)
         logging.info('%s was created.', case['name'])
 
-def submit(args):
+def submit(proj, args):
     ''' Submits cases for execution using the qsub command '''
     home = os.getcwd()
 
@@ -151,32 +176,32 @@ def submit(args):
         return
 
     # Submit all cases
-    for case in case_generator(args):
+    for case in case_generator(proj.case_file):
         cname = case['name']
-        if exists(join(ARCHIVE, cname)):
+        if exists(join(proj.archive, cname)):
             logging.info('%s was skipped (archived)', cname)
             continue
 
-        if not exists(join(WORKING, cname)):
+        if not exists(join(proj.working, cname)):
             logging.warning('%s was skipped (working directory is missing)', cname)
             continue
 
         try:
-            os.chdir(join(WORKING, cname))
-            out = subprocess.check_output(['qsub'] + args.qargs + ['run.sh'])
+            os.chdir(join(proj.working, cname))
+            out = subprocess.check_output(['qsub'] + args.qargs + [proj.run_stript])
             logging.info('%s started as %s', cname, out.strip())
         except:
             logging.exception('%s failed while issuing qsub command!', cname)
         finally:
             os.chdir(home)
 
-def update(args):
+def update(proj, args):
     ''' Re-generates case files in-place without deleting existing outputs '''
     home = os.getcwd()
-    for case in case_generator(args):
+    for case in case_generator(proj.case_file):
         cname = case['name']
-        src = join(TEMPLATES, case['template'])
-        dst = join(WORKING, cname)
+        src = join(proj.templates, case['template'])
+        dst = join(proj.working, cname)
 
         if not exists(dst):
             logging.info('%s was skipped (no case folder)', cname)
@@ -207,7 +232,7 @@ def update(args):
             os.chdir(home)
 
         # Do token replacement
-        update_case_files(dst, case)
+        update_case_files(dst, proj.replace_file, case)
         logging.info('%s was updated.', cname)
 
 
@@ -243,7 +268,7 @@ def build_parser():
     case_matrix_parser = argparse.ArgumentParser(add_help = False)
     case_matrix_parser.add_argument(
         '-f', '--file',
-        help = 'File with case matrix parameters.',
+        help = 'Name of file with case matrix parameters.',
         default = 'case_matrix.csv',
     )
     case_matrix_parser.add_argument(
@@ -309,4 +334,8 @@ if __name__ == '__main__':
         level=args.loglevel,
         format='%(levelname)s: %(message)s',
     )
-    args.func(args)
+    if args.func is init:
+        init(args)
+    else:
+        proj = ProjectStructure(args.file)
+        args.func(proj,args)
