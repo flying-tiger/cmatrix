@@ -188,7 +188,7 @@ def submit(proj, args):
 
         try:
             os.chdir(join(proj.working, cname))
-            out = subprocess.check_output(['qsub'] + args.qargs + [proj.run_stript])
+            out = subprocess.check_output(['qsub'] + args.qargs + [proj.run_script])
             logging.info('%s started as %s', cname, out.strip())
         except:
             logging.exception('%s failed while issuing qsub command!', cname)
