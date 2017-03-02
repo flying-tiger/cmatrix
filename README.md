@@ -29,7 +29,7 @@ command to look for private modules:
 
     # Do this once
     mkdir -p ~/privatemodules
-    ln -s ~/privatemodules/cmatrix <path_to_repo>/modulefile
+    ln -s <path_to_repo>/modulefile ~/privatemodules/cmatrix
 
     # Put this in your .bashrc or similar
     module load use.own
