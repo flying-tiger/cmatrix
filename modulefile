@@ -1,0 +1,12 @@
+#%Module
+module-whatis Adds cmatrix case manager to environment
+
+# Figure out where cmatrix package is located, accounting
+# for the fact that this modulefile is probably symlink'd
+# into ~/privatemodules
+set root [file readlink $ModulesCurrentModulefile]
+set root [file dirname  $root]
+
+# Configure the environment
+setenv CMATRIX_ROOT $root
+prepend-path PATH $root/bin

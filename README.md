@@ -22,9 +22,18 @@ column "case_matrix.csv" surrounded by double angle brackets, e.g. `<<case_name>
 * Set $CMATRIX_ROOT=\<path_to_repo\>
 * Add $CMATRIX_ROOT/bin to your search path
 
-If you use bash, use the provided setup file (and add to .bashrc):
+If you use [envrionment modules](http://modules.sourceforge.net/) (and you really
+should), a modulefile is provided. I recommend setting a symlink in your
+`~/privatemodules` directory pointing to the provided file and telling the module
+command to look for private modules:
 
-    source <path_to_repo>/setup.sh
+    # Do this once
+    mkdir -p ~/privatemodules
+    ln -s ~/privatemodules/cmatrix <path_to_repo>/modulefile
+
+    # Put this in your .bashrc or similar
+    module load use.own
+    module load cmatrix
 
 ## Useage
 
