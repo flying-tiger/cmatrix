@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import argparse
 import csv
 import distutils.dir_util as dutil
@@ -92,7 +92,7 @@ def try_float(val):
         return val
 
 def matches_selector(selector, case_dict):
-    ''' Examines the case dictionary to determine if case matches the 
+    ''' Examines the case dictionary to determine if case matches the
         selector. The selector may be either a glob expression that is
         used to filter cases based on their case names or an arbitrary
         python conditional expression involving the entires in the case
@@ -154,7 +154,7 @@ def create(proj, args):
         src = join(proj.templates, case['template'])
         dst = join(proj.working, case['name'])
         if exists(dst):
-            confirm = raw_input('Remove %s? [y/n]  ' % dst)
+            confirm = input('Remove %s? [y/n]  ' % dst)
             if 'y' in confirm.lower():
                 shutil.rmtree(dst)
             else:
