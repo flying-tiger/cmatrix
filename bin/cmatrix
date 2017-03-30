@@ -232,7 +232,7 @@ def update(proj, args):
             os.chdir(home)
 
         # Do token replacement
-        update_case_files(dst, proj.replace_file, case)
+        update_case_files(dst, proj.replace_list, case)
         logging.info('%s was updated.', cname)
 
 
