@@ -20,18 +20,18 @@ substitution. If you have any big files (e.g. a CFD grid) that should be shared
 among cases, put these files in the "common" folder and use a relative symlink 
 in the template folder: 
 
-  common
-    |- my_grid_file1.pgrx
-    |- my_grid_file2.pgrx
-  template
-    |- template1
-    |    |- grid.pgrx -> ../../common/my_grid_file1.pgrx
-    |    |- files.txt
-    |    |- run.sh
-    |- template2
-         |- grid.pgrx -> ../../common/my_grid_file1.pgrx
-         |- files.txt
-         |- run.sh
+    common
+      |- my_grid_file1.pgrx
+      |- my_grid_file2.pgrx
+    template
+      |- template1
+      |    |- grid.pgrx -> ../../common/my_grid_file1.pgrx
+      |    |- files.txt
+      |    |- run.sh
+      |- template2
+           |- grid.pgrx -> ../../common/my_grid_file1.pgrx
+           |- files.txt
+           |- run.sh
 
 Finally, when a case is created, it is placed in the "working" folder. Once you've 
 run your analysis and the case is done, move it to the archive. If a case has been
