@@ -2,9 +2,9 @@
 
 This directory was created using the 'cmatrix init' command. Here's how to use it: 
 
-The case matrix manager creates a new case by copying performing textual replacement
-on a *case template*. A case template is a collection of files in a subdirectory of 
-of the "templates" folder, and can be pretty much anything. The only requirements is 
+The case matrix manager creates a new case by performing textual replacement on a
+*case template*. A case template is a collection of files in a subdirectory of of 
+the "templates" folder, and can be pretty much anything. The only requirements is 
 that a template contain two files: replace.txt and run.sh.
 
 * replace.txt: Tells case manager which files to perform textual substitution on
