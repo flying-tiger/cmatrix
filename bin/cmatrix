@@ -215,9 +215,34 @@ def update(proj, args):
             os.chdir(src)
             for root, dirs, files in os.walk('.'):
                 for dir in dirs:
+                    src_dir = join(home, src, root, dir)
                     dst_dir = join(home, dst, root, dir)
-                    if not exists(dst_dir):
-                        os.mkdir(dst_dir)
+                    if exists(dst_dir) and os.path.islink(dst_dir):
+                        os.remove(dst_dir)
+                        if os.path.islink(src_dir):
+                            linkto = os.readlink(src_dir)
+                            os.symlink(linkto, dst_dir)
+                        else:
+                            os.mkdir(dst_dir)
+
+                    elif exists(dst_dir) and not os.path.islink(dst_dir):
+                        if os.path.islink(src_dir):
+                            logging.warning(
+                                'Did not update "%s" with symlink to "%s".\n'
+                                'Current object is a real directory. To proceed with update,\n'
+                                'please manually remove the directory and re-run update.',
+                                dst_dir, os.readlink(src_dir)
+                            )
+                        else:
+                            pass
+
+                    else:
+                        if os.path.islink(src_dir):
+                            linkto = os.readlink(src_dir)
+                            os.symlink(linkto, dst_dir)
+                        else:
+                            os.mkdir(dst_dir)
+
                 for file in files:
                     src_file = join(home, src, root, file)
                     dst_file = join(home, dst, root, file)
