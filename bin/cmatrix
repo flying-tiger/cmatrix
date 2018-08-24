@@ -151,18 +151,22 @@ def init(args):
 def create(proj, args):
     ''' Constructs empty case directories from templates + case matrix '''
     for case in case_generator(proj.case_file):
+        cname = case['name']
+        if exists(join(proj.archive, cname)):
+            logging.info('%s was skipped (archived)', cname)
+            continue
         src = join(proj.templates, case['template'])
-        dst = join(proj.working, case['name'])
+        dst = join(proj.working, cname)
         if exists(dst):
             confirm = input('Remove %s? [y/n]  ' % dst)
             if 'y' in confirm.lower():
                 shutil.rmtree(dst)
             else:
-                logging.warning('%s was skipped (case already exists)', case['name'])
+                logging.warning('%s was skipped (case already exists)', cname)
                 continue
         shutil.copytree(src, dst, symlinks = True)
         update_case_files(dst, proj.replace_list, case)
-        logging.info('%s was created.', case['name'])
+        logging.info('%s was created.', cname)
 
 def submit(proj, args):
     ''' Submits cases for execution using the qsub command '''
