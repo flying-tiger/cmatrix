@@ -182,8 +182,11 @@ def create(proj, args):
         src = join(proj.templates, case['template'])
         dst = join(proj.working, cname)
         if exists(dst):
-            confirm = input('Remove %s? [y/n]  ' % dst)
-            if 'y' in confirm.lower():
+            if args.force:
+                clear_existing = True
+            else:
+                clear_existing = input('Remove %s? [y/n]  ' % dst) == 'y'
+            if clear_existing:
                 shutil.rmtree(dst)
             else:
                 logging.warning('%s was skipped (case already exists)', cname)
@@ -373,6 +376,12 @@ def build_parser():
         help = create.__doc__,
         description = create.__doc__,
         parents = [case_matrix_parser],
+    )
+    create_parser.add_argument(
+        '--force',
+        help = 'Overwrite existing working files',
+        default = False,
+        action = 'store_true',
     )
     create_parser.set_defaults(func = create)
 
