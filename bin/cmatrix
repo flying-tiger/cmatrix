@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 import argparse
 import csv
+import datetime
 import distutils.dir_util as dutil
 import fnmatch
 import glob
 import logging
+import multiprocessing as mp
 import os
 import pprint
 import re
@@ -83,6 +85,28 @@ def update_case_files(case_path, replace_file, case_dict):
         )
     finally:
         os.chdir(home)
+
+def run_case(case_path):
+    ''' Run a single case on the local machine '''
+    pid = mp.current_process().name
+    cname = os.path.basename(case_path)
+    print(f'{timestamp()} | {pid} | Starting {cname}')
+    home = os.getcwd()
+    try:
+        os.chdir(case_path)
+        if exists('Makefile') or exists('makefile'):
+            subprocess.check_output(['make'])
+        elif exists('run.sh'):
+            subprocess.check_output(['run.sh'])
+        else:
+            raise RuntimeError(f'Could not find entry point to run {cname}.')
+    finally:
+        os.chdir(home)
+    print(f'{timestamp()} | {pid} | Finished {cname}')
+
+def timestamp():
+    ''' Returns a string representing the current time '''
+    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 def try_float(val):
     ''' Attempts conversion to float; if fails, returns original string '''
@@ -167,6 +191,30 @@ def create(proj, args):
         shutil.copytree(src, dst, symlinks = True)
         update_case_files(dst, proj.replace_list, case)
         logging.info('%s was created.', cname)
+
+def run(proj, args):
+    ''' Executes cases on the local machine '''
+
+    # Get working directories for all cases to run
+    case_paths = []
+    for case in case_generator(proj.case_file):
+        cname = case['name']
+        if exists(join(proj.archive, cname)):
+            logging.info('%s was skipped (archived)', cname)
+            continue
+        if not exists(join(proj.working, cname)):
+            logging.info('%s was skipped (no working files)', cname)
+            continue
+        case_paths.append(join(proj.working,cname))
+
+    # Execute
+    logging.info('Running %d cases using %d processes', len(case_paths), args.jobs)
+    if args.jobs <= 1:
+        for cp in case_paths:
+            run_case(cp)
+    else:
+        with mp.Pool(processes=args.jobs) as pool:
+            pool.map(run_case, case_paths)
 
 def submit(proj, args):
     ''' Submits cases for execution using the qsub command '''
@@ -327,6 +375,21 @@ def build_parser():
         parents = [case_matrix_parser],
     )
     create_parser.set_defaults(func = create)
+
+    # Run command
+    run_parser = subparsers.add_parser(
+        'run',
+        help = run.__doc__,
+        description = run.__doc__,
+        parents = [case_matrix_parser],
+    )
+    run_parser.add_argument(
+        '-j', '--jobs',
+        help = 'Number of jobs used to run cases in parallel',
+        type = int,
+        default = 1,
+    )
+    run_parser.set_defaults(func = run)
 
     # Submit command
     submit_parser = subparsers.add_parser(
