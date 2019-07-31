@@ -366,7 +366,9 @@ def build_parser():
     )
     init_parser.add_argument(
         'folder',
-        help = 'Folder where case matrix template will be created',
+        help = 'Folder where case matrix template will be created [def: cwd]',
+        nargs = '?',
+        default = os.getcwd(),
     )
     init_parser.set_defaults(func = init)
 
